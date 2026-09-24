@@ -1,0 +1,32 @@
+# ===== DESABILITAR LISTAGEM DE DIRETÓRIOS =====
+Options -Indexes
+
+# ===== PROTEGER ARQUIVOS SENSÍVEIS =====
+<FilesMatch "\.(sql|log|env|md)$">
+    Require all denied
+</FilesMatch>
+
+# ===== HEADERS DE SEGURANÇA =====
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header unset X-Powered-By
+</IfModule>
+
+# ===== FORÇAR HTTPS EM PRODUÇÃO (descomente no deploy) =====
+# <IfModule mod_rewrite.c>
+#     RewriteEngine On
+#     RewriteCond %{HTTPS} off
+#     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# </IfModule>
+
+# ===== CACHE =====
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+</IfModule>

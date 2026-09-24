@@ -1,0 +1,13 @@
+# Credenciais do banco (use config/db.example.php como modelo)
+config/db.php
+
+# Fotos enviadas pelo painel
+assets/uploads/produtos/*
+!assets/uploads/produtos/.gitkeep
+
+# Logs e arquivos do sistema/editor
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.claude/
