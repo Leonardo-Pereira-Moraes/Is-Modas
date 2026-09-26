@@ -18,17 +18,32 @@ if ($busca !== '') {
     $params[] = '%' . $busca . '%';
 }
 
-$sql = "SELECT p.id, p.nome, p.preco, p.imagem, p.destaque, p.ativo, c.nome AS categoria,
-               GROUP_CONCAT(t.nome ORDER BY t.ordem SEPARATOR ', ') AS tamanhos
+$sql = "SELECT p.id, p.nome, p.preco, p.imagem, p.destaque, p.ativo, c.nome AS categoria
         FROM produtos p
-        JOIN categorias c ON c.id = p.categoria_id
-        LEFT JOIN produto_tamanhos pt ON pt.produto_id = p.id
-        LEFT JOIN tamanhos t ON t.id = pt.tamanho_id"
+        JOIN categorias c ON c.id = p.categoria_id"
      . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
-     . ' GROUP BY p.id ORDER BY p.criado_em DESC';
+     . ' ORDER BY p.criado_em DESC';
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $produtos = $stmt->fetchAll();
+
+// Cada cor com seus tamanhos, ex.: "Bege: M, G"
+$variacoesPorProduto = [];
+if ($produtos) {
+    $ids = array_column($produtos, 'id');
+    $stmt = $pdo->prepare("SELECT pc.produto_id, pc.nome,
+                                  GROUP_CONCAT(t.nome ORDER BY t.ordem SEPARATOR ', ') AS tamanhos
+                           FROM produto_cores pc
+                           LEFT JOIN variacoes v ON v.cor_id = pc.id
+                           LEFT JOIN tamanhos t ON t.id = v.tamanho_id
+                           WHERE pc.produto_id IN (" . implode(',', array_fill(0, count($ids), '?')) . ")
+                           GROUP BY pc.id
+                           ORDER BY pc.ordem, pc.id");
+    $stmt->execute($ids);
+    foreach ($stmt->fetchAll() as $v) {
+        $variacoesPorProduto[$v['produto_id']][] = $v['nome'] . ': ' . ($v['tamanhos'] ?: '—');
+    }
+}
 
 $tituloPagina = 'Produtos';
 require __DIR__ . '/includes/topo.php';
@@ -70,7 +85,7 @@ require __DIR__ . '/includes/topo.php';
                     <th>Produto</th>
                     <th class="d-none d-md-table-cell">Categoria</th>
                     <th>Preço</th>
-                    <th class="d-none d-lg-table-cell">Tamanhos</th>
+                    <th class="d-none d-lg-table-cell">Cores e tamanhos</th>
                     <th class="d-none d-sm-table-cell">Status</th>
                     <th class="text-end">Ações</th>
                 </tr>
@@ -88,7 +103,11 @@ require __DIR__ . '/includes/topo.php';
                     <td class="fw-semibold"><?= e($p['nome']) ?></td>
                     <td class="d-none d-md-table-cell"><?= e($p['categoria']) ?></td>
                     <td class="text-nowrap"><?= formatarPreco($p['preco']) ?></td>
-                    <td class="d-none d-lg-table-cell small"><?= e($p['tamanhos'] ?: '—') ?></td>
+                    <td class="d-none d-lg-table-cell small">
+                        <?php foreach ($variacoesPorProduto[$p['id']] ?? ['Sem cores'] as $linhaVariacao): ?>
+                            <span class="d-block"><?= e($linhaVariacao) ?></span>
+                        <?php endforeach; ?>
+                    </td>
                     <td class="d-none d-sm-table-cell">
                         <?php if ($p['ativo']): ?>
                             <span class="badge badge-ativo">Visível</span>

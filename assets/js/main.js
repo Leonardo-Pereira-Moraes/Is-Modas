@@ -3,9 +3,10 @@
 const LOJA_NOME = document.body.dataset.loja || 'Is Modas';
 
 /* ------------------------------------------------------------------
-   Escolha de tamanho + link do WhatsApp com mensagem pré-preenchida
+   Escolha de cor e tamanho + link do WhatsApp com mensagem pré-preenchida
+   (mesmo texto de linkWhatsApp() em includes/loja.php)
    ------------------------------------------------------------------ */
-function montarMensagem(card, tamanho) {
+function montarMensagem(card, tamanho, cor) {
     const linhas = [
         `Olá, ${LOJA_NOME}! Tenho interesse neste produto:`,
         '',
@@ -13,37 +14,83 @@ function montarMensagem(card, tamanho) {
         `Preço: ${card.dataset.preco}`,
     ];
     if (tamanho) linhas.push(`Tamanho: ${tamanho}`);
+    if (cor) linhas.push(`Cor: ${cor}`);
     linhas.push('', 'Ainda está disponível?');
     return linhas.join('\n');
 }
 
 function atualizarLinkComprar(card) {
     const botao = card.querySelector('.btn-comprar');
-    const selecionado = card.querySelector('.tamanho.selecionado');
+    const tamanho = card.querySelector('.tamanho.selecionado')?.textContent.trim();
+    const cor = card.querySelector('.cor.selecionado')?.textContent.trim();
     const url = new URL(botao.href);
-    url.searchParams.set('text', montarMensagem(card, selecionado?.textContent.trim()));
+    url.searchParams.set('text', montarMensagem(card, tamanho, cor));
     botao.href = url.toString();
 }
 
-document.querySelectorAll('.produto-card').forEach((card) => {
-    const botoes = card.querySelectorAll('.tamanho');
+/** Mostra a foto da cor selecionada, ou a foto principal se ela não tiver foto própria. */
+function atualizarFoto(card) {
+    const img = card.querySelector('.produto-foto img');
+    if (!img) return;
+    const cor = card.querySelector('.cor.selecionado');
+    const nova = cor?.dataset.imagem || img.dataset.principal;
+    if (nova && img.getAttribute('src') !== nova) {
+        img.classList.add('trocando');
+        const pronto = () => img.classList.remove('trocando');
+        img.addEventListener('load', pronto, { once: true });
+        img.addEventListener('error', pronto, { once: true });
+        img.src = nova;
+    }
+}
 
-    botoes.forEach((botao) => {
-        botao.addEventListener('click', () => {
-            const jaSelecionado = botao.classList.contains('selecionado');
-            botoes.forEach((b) => {
-                b.classList.remove('selecionado');
-                b.setAttribute('aria-pressed', 'false');
+function marcar(botao, selecionado) {
+    botao.classList.toggle('selecionado', selecionado);
+    botao.setAttribute('aria-pressed', String(selecionado));
+}
+
+/**
+ * Mostra só os tamanhos da cor selecionada (sem cor: todos os tamanhos do produto).
+ * Um tamanho escolhido que não existe na nova cor é desmarcado; se sobrar
+ * um único tamanho, ele já fica selecionado.
+ */
+function filtrarTamanhos(card) {
+    const cor = card.querySelector('.cor.selecionado');
+    const permitidos = cor ? JSON.parse(cor.dataset.tamanhos || '[]') : null;
+    const botoes = [...card.querySelectorAll('.tamanho')];
+
+    botoes.forEach((b) => {
+        const visivel = !permitidos || permitidos.includes(b.dataset.tamanho);
+        b.hidden = !visivel;
+        if (!visivel) marcar(b, false);
+    });
+
+    const visiveis = botoes.filter((b) => !b.hidden);
+    if (visiveis.length === 1) marcar(visiveis[0], true);
+}
+
+document.querySelectorAll('.produto-card').forEach((card) => {
+    // Cada grupo (cores / tamanhos) permite uma escolha; tocar de novo desmarca
+    card.querySelectorAll('.produto-opcoes').forEach((grupo) => {
+        const botoes = grupo.querySelectorAll('.opcao');
+        botoes.forEach((botao) => {
+            botao.addEventListener('click', () => {
+                const jaSelecionado = botao.classList.contains('selecionado');
+                botoes.forEach((b) => marcar(b, false));
+                if (!jaSelecionado) marcar(botao, true);
+                if (botao.classList.contains('cor')) {
+                    atualizarFoto(card);
+                    filtrarTamanhos(card);
+                }
+                atualizarLinkComprar(card);
             });
-            if (!jaSelecionado) {
-                botao.classList.add('selecionado');
-                botao.setAttribute('aria-pressed', 'true');
-            }
-            atualizarLinkComprar(card);
         });
     });
 
-    if (card.querySelector('.tamanho.selecionado')) atualizarLinkComprar(card);
+    // Começa a baixar a foto da cor quando o dedo/mouse chega no botão
+    card.querySelectorAll('.cor').forEach((b) => {
+        if (!b.dataset.imagem) return;
+        b.addEventListener('pointerenter', () => { new Image().src = b.dataset.imagem; }, { once: true });
+    });
 });
 
 /* ------------------------------------------------------------------

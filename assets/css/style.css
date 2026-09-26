@@ -261,8 +261,18 @@ a:hover { color: var(--ouro-claro); }
 }
 .produto-preco { font-size: 1.05rem; font-weight: 600; color: var(--ouro); margin-bottom: .6rem; }
 
-.produto-tamanhos { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .85rem; }
-.tamanho {
+/* Opções do produto: cores (pílulas) e tamanhos (quadrados) */
+.opcoes-rotulo {
+    font-size: .6rem;
+    font-weight: 600;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--cinza);
+    margin-bottom: .3rem;
+}
+.produto-opcoes { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .7rem; }
+.produto-opcoes:last-of-type { margin-bottom: .85rem; }
+.opcao {
     min-width: 34px;
     padding: .25rem .4rem;
     background: transparent;
@@ -274,8 +284,13 @@ a:hover { color: var(--ouro-claro); }
     font-weight: 500;
     transition: all .15s;
 }
-.tamanho:hover { border-color: var(--ouro); color: var(--ouro); }
-.tamanho.selecionado { background: var(--ouro); border-color: var(--ouro); color: var(--preto); font-weight: 600; }
+.opcao.cor { border-radius: 999px; padding: .25rem .65rem; }
+.opcao:hover { border-color: var(--ouro); color: var(--ouro); }
+.opcao.selecionado { background: var(--ouro); border-color: var(--ouro); color: var(--preto); font-weight: 600; }
+
+/* troca suave da foto ao escolher uma cor */
+.produto-foto img.trocando { opacity: .35; }
+.produto-foto img { transition: transform .5s, opacity .25s; }
 
 .btn-comprar {
     margin-top: auto;

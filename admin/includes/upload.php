@@ -7,14 +7,38 @@ const TIPOS_IMAGEM = [
     'image/webp' => 'webp',
 ];
 
+/** Foto principal do produto (campo simples, ex.: name="imagem"). */
+function salvarImagemProduto(string $campo): ?string
+{
+    return salvarImagem($_FILES[$campo] ?? null);
+}
+
 /**
- * Valida e salva a imagem enviada no campo $campo.
+ * Um arquivo de um campo em lista, ex.: name="cor_imagem[n1]".
+ * O PHP agrupa esses campos por atributo ($_FILES[campo]['name'][chave]...),
+ * aqui remontamos o arquivo daquela chave.
+ */
+function arquivoDaLista(string $campo, string $chave): ?array
+{
+    $f = $_FILES[$campo] ?? null;
+    if (!$f || !is_array($f['name']) || !array_key_exists($chave, $f['name'])) {
+        return null;
+    }
+    return [
+        'name'     => $f['name'][$chave],
+        'tmp_name' => $f['tmp_name'][$chave],
+        'error'    => $f['error'][$chave],
+        'size'     => $f['size'][$chave],
+    ];
+}
+
+/**
+ * Valida e salva um arquivo de imagem vindo de $_FILES.
  * Retorna o nome do arquivo salvo, null se nenhum arquivo foi enviado,
  * ou lança RuntimeException com a mensagem de erro para o usuário.
  */
-function salvarImagemProduto(string $campo): ?string
+function salvarImagem(?array $arq): ?string
 {
-    $arq = $_FILES[$campo] ?? null;
     if (!$arq || $arq['error'] === UPLOAD_ERR_NO_FILE) {
         return null;
     }

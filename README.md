@@ -33,8 +33,22 @@ database/schema.sql          tabelas + dados iniciais
 |--------------------|----------------------------------------------------------|
 | `usuarios`         | login do painel (senha com `password_hash`)              |
 | `categorias`       | feminino, masculino, acessórios (`slug` usado no filtro) |
-| `tamanhos`         | PP…XG, 34…46, Único (`ordem` define a exibição)          |
-| `produtos`         | nome, preço, descrição, foto, destaque, ativo            |
-| `produto_tamanhos` | N:N produto × tamanho                                    |
+| `tamanhos`         | PP…XG, 34…46, Único, com `tipo` (letra, numero, unico) e `ordem` de exibição |
+| `produtos`         | nome, preço, descrição, foto, `tipo_tamanho`, destaque, ativo |
+| `produto_cores`    | cores de cada produto: nome + foto opcional (sem foto, usa a principal) |
+| `variacoes`        | quais tamanhos cada cor tem (produto × cor × tamanho); os tamanhos do produto são a união das suas cores |
 
-Nova categoria ou tamanho: basta um `INSERT` na tabela, e o site e o painel já passam a exibir.
+Nova categoria ou tamanho: basta um `INSERT` na tabela (tamanho com o `tipo` certo), e o site e o painel já passam a exibir.
+
+### Atualizando um banco antigo
+
+Bancos criados com versões antigas do `schema.sql` rodam as migrações que
+faltam, **uma vez cada e nesta ordem** (phpMyAdmin → Importar):
+
+1. `database/migracao_001_cores_tipo_tamanho.sql`: cores e tipo de tamanho por produto
+   (deduz o tipo pelos tamanhos já marcados).
+2. `database/migracao_002_variacoes.sql`: tamanhos por cor. Cada cor recebe os
+   tamanhos que o produto tinha e a tabela `produto_tamanhos` é removida.
+
+Como saber o que falta: sem a tabela `produto_cores`, rode as duas; com `produto_cores`
+mas sem `variacoes`, rode só a 002. Instalações novas usam só o `schema.sql`, que já inclui tudo.

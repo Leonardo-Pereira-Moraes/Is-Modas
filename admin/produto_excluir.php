@@ -17,9 +17,15 @@ $produto = $stmt->fetch();
 if (!$produto) {
     flash('erro', 'Produto não encontrado.');
 } else {
-    // produto_tamanhos é apagado junto (ON DELETE CASCADE)
+    // Fotos das cores precisam ser lidas antes: as linhas somem no CASCADE
+    $stmt = $pdo->prepare('SELECT imagem FROM produto_cores WHERE produto_id = ? AND imagem IS NOT NULL');
+    $stmt->execute([$id]);
+    $fotosCores = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    // produto_cores e variacoes são apagados junto (ON DELETE CASCADE)
     $pdo->prepare('DELETE FROM produtos WHERE id = ?')->execute([$id]);
     removerImagemProduto($produto['imagem']);
+    array_map('removerImagemProduto', $fotosCores);
     flash('sucesso', 'Produto "' . $produto['nome'] . '" excluído.');
 }
 

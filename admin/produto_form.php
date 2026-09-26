@@ -7,15 +7,25 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/upload.php';
 exigirLogin();
 
+const TIPOS_TAMANHO = [
+    'letra'  => 'Letra (PP a XG)',
+    'numero' => 'Numeração (34 a 46)',
+    'unico'  => 'Único',
+];
+
 $categorias = $pdo->query('SELECT id, nome FROM categorias ORDER BY ordem, nome')->fetchAll();
-$tamanhos   = $pdo->query('SELECT id, nome FROM tamanhos ORDER BY ordem')->fetchAll();
+$tamanhos   = $pdo->query('SELECT id, nome, tipo FROM tamanhos ORDER BY ordem')->fetchAll();
 
 $id = (int) ($_GET['id'] ?? $_POST['id'] ?? 0);
 $produto = [
     'nome' => '', 'descricao' => '', 'preco' => '', 'categoria_id' => 0,
-    'imagem' => null, 'destaque' => 0, 'ativo' => 1,
+    'imagem' => null, 'tipo_tamanho' => 'letra', 'destaque' => 0, 'ativo' => 1,
 ];
-$tamanhosMarcados = [];
+$coresExistentes = []; // id => linha do banco
+// Linhas de cor exibidas no formulário: chave => [id, nome, imagem, tamanhos]
+// chave "e<id>" para cores já salvas, "n<numero>" para novas
+$corVazia = ['id' => null, 'nome' => '', 'imagem' => null, 'tamanhos' => []];
+$cores = ['n0' => $corVazia];
 
 if ($id > 0) {
     $stmt = $pdo->prepare('SELECT * FROM produtos WHERE id = ?');
@@ -26,9 +36,29 @@ if ($id > 0) {
         header('Location: index.php');
         exit;
     }
-    $stmt = $pdo->prepare('SELECT tamanho_id FROM produto_tamanhos WHERE produto_id = ?');
+
+    // Tamanhos de cada cor (tabela variacoes)
+    $stmt = $pdo->prepare('SELECT cor_id, tamanho_id FROM variacoes WHERE produto_id = ?');
     $stmt->execute([$id]);
-    $tamanhosMarcados = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    $tamanhosPorCor = [];
+    foreach ($stmt->fetchAll() as $v) {
+        $tamanhosPorCor[(int) $v['cor_id']][] = (int) $v['tamanho_id'];
+    }
+
+    $stmt = $pdo->prepare('SELECT id, nome, imagem FROM produto_cores WHERE produto_id = ? ORDER BY ordem, id');
+    $stmt->execute([$id]);
+    foreach ($stmt->fetchAll() as $c) {
+        $coresExistentes[(int) $c['id']] = $c;
+    }
+    if ($coresExistentes) {
+        $cores = [];
+        foreach ($coresExistentes as $cid => $c) {
+            $cores['e' . $cid] = [
+                'id' => $cid, 'nome' => $c['nome'], 'imagem' => $c['imagem'],
+                'tamanhos' => $tamanhosPorCor[$cid] ?? [],
+            ];
+        }
+    }
 }
 
 /** Aceita "1.299,90", "129,90" ou "129.90" e devolve float (ou null se inválido). */
@@ -50,16 +80,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $produto['descricao']    = trim($_POST['descricao'] ?? '');
     $produto['preco']        = trim($_POST['preco'] ?? '');
     $produto['categoria_id'] = (int) ($_POST['categoria_id'] ?? 0);
+    $produto['tipo_tamanho'] = (string) ($_POST['tipo_tamanho'] ?? '');
     $produto['destaque']     = isset($_POST['destaque']) ? 1 : 0;
     $produto['ativo']        = isset($_POST['ativo']) ? 1 : 0;
 
-    $idsValidos = array_map('intval', array_column($tamanhos, 'id'));
-    $tamanhosMarcados = array_values(array_intersect(
-        array_map('intval', (array) ($_POST['tamanhos'] ?? [])),
-        $idsValidos
-    ));
-
     $preco = lerPreco($produto['preco']);
+    $tipoValido = isset(TIPOS_TAMANHO[$produto['tipo_tamanho']]);
+    $tipoUnico = $produto['tipo_tamanho'] === 'unico';
+
+    // Só são aceitos tamanhos do tipo escolhido; "Único" é marcado automaticamente
+    $idsDoTipo = [];
+    foreach ($tamanhos as $t) {
+        if ($t['tipo'] === $produto['tipo_tamanho']) {
+            $idsDoTipo[] = (int) $t['id'];
+        }
+    }
+
+    // ----- Cores e seus tamanhos -----
+    $cores = [];
+    $coresValidas = [];
+    $nomesUsados = [];
+    foreach ((array) ($_POST['cores'] ?? []) as $chave => $linha) {
+        $chave = (string) $chave;
+        if (!is_array($linha) || !preg_match('/^[en]\d{1,9}$/', $chave)) {
+            continue;
+        }
+        $cid = (int) ($linha['id'] ?? 0);
+        $cid = isset($coresExistentes[$cid]) ? $cid : null; // ignora ids de outro produto
+        $nome = trim((string) ($linha['nome'] ?? ''));
+        $arquivo = arquivoDaLista('cor_imagem', $chave);
+        $temArquivo = $arquivo && $arquivo['error'] !== UPLOAD_ERR_NO_FILE;
+        $marcados = array_values(array_intersect(
+            array_map('intval', (array) ($linha['tamanhos'] ?? [])),
+            $idsDoTipo
+        ));
+        $cor = [
+            'id'           => $cid,
+            'nome'         => $nome,
+            'imagem'       => $cid ? $coresExistentes[$cid]['imagem'] : null,
+            'remover_foto' => isset($linha['remover_foto']),
+            'tamanhos'     => $tipoUnico ? $idsDoTipo : $marcados,
+            'chave'        => $chave,
+        ];
+        $cores[$chave] = $cor;
+
+        if ($nome === '') {
+            if ($temArquivo || (!$tipoUnico && $marcados)) {
+                $erros[] = 'Há uma cor com foto ou tamanhos marcados, mas sem nome.';
+            }
+            continue; // linha em branco é ignorada
+        }
+        if (mb_strlen($nome) > 40) {
+            $erros[] = "O nome da cor \"$nome\" é longo demais (até 40 caracteres).";
+        }
+        $nomeComparar = mb_strtolower($nome);
+        if (isset($nomesUsados[$nomeComparar])) {
+            $erros[] = "A cor \"$nome\" foi adicionada mais de uma vez.";
+        }
+        $nomesUsados[$nomeComparar] = true;
+        if ($tipoValido && !$cor['tamanhos']) {
+            $erros[] = "Marque os tamanhos disponíveis da cor \"$nome\".";
+        }
+        $coresValidas[] = $cor;
+    }
+    if (!$cores) {
+        $cores = ['n0' => $corVazia];
+    }
 
     if ($produto['nome'] === '' || mb_strlen($produto['nome']) > 120) {
         $erros[] = 'Informe o nome do produto (até 120 caracteres).';
@@ -70,63 +156,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($produto['categoria_id'], array_map('intval', array_column($categorias, 'id')), true)) {
         $erros[] = 'Selecione uma categoria.';
     }
-    if (!$tamanhosMarcados) {
-        $erros[] = 'Marque pelo menos um tamanho.';
+    if (!$tipoValido) {
+        $erros[] = 'Escolha o tipo de tamanho.';
+        $produto['tipo_tamanho'] = 'letra';
+    }
+    if (!$coresValidas) {
+        $erros[] = 'Adicione pelo menos uma cor com seus tamanhos.';
     }
 
+    // Uploads só depois de tudo validado, para não deixar arquivos órfãos
     $novaImagem = null;
+    $arquivosNovos = [];
     if (!$erros) {
         try {
             $novaImagem = salvarImagemProduto('imagem');
-            if (!$novaImagem && !$produto['imagem']) {
-                $erros[] = 'Envie uma foto do produto.';
+            if ($novaImagem) {
+                $arquivosNovos[] = $novaImagem;
+            } elseif (!$produto['imagem']) {
+                $erros[] = 'Envie a foto principal do produto.';
+            }
+            foreach ($coresValidas as &$cor) {
+                try {
+                    $cor['nova_imagem'] = salvarImagem(arquivoDaLista('cor_imagem', $cor['chave']));
+                } catch (RuntimeException $ex) {
+                    throw new RuntimeException('Foto da cor "' . $cor['nome'] . '": ' . $ex->getMessage());
+                }
+                if ($cor['nova_imagem']) {
+                    $arquivosNovos[] = $cor['nova_imagem'];
+                }
             }
         } catch (RuntimeException $ex) {
             $erros[] = $ex->getMessage();
+        }
+        unset($cor);
+        if ($erros) {
+            array_map('removerImagemProduto', $arquivosNovos);
         }
     }
 
     if (!$erros) {
         $imagemAntiga = $produto['imagem'];
         $imagemFinal  = $novaImagem ?? $imagemAntiga;
+        $arquivosParaApagar = $novaImagem && $imagemAntiga ? [$imagemAntiga] : [];
 
         try {
             $pdo->beginTransaction();
 
             $dados = [
                 $produto['categoria_id'], $produto['nome'], $produto['descricao'] ?: null,
-                $preco, $imagemFinal, $produto['destaque'], $produto['ativo'],
+                $preco, $imagemFinal, $produto['tipo_tamanho'], $produto['destaque'], $produto['ativo'],
             ];
             if ($id > 0) {
                 $pdo->prepare('UPDATE produtos SET categoria_id = ?, nome = ?, descricao = ?, preco = ?,
-                                      imagem = ?, destaque = ?, ativo = ? WHERE id = ?')
+                                      imagem = ?, tipo_tamanho = ?, destaque = ?, ativo = ? WHERE id = ?')
                     ->execute([...$dados, $id]);
             } else {
-                $pdo->prepare('INSERT INTO produtos (categoria_id, nome, descricao, preco, imagem, destaque, ativo)
-                               VALUES (?, ?, ?, ?, ?, ?, ?)')
+                $pdo->prepare('INSERT INTO produtos (categoria_id, nome, descricao, preco, imagem, tipo_tamanho, destaque, ativo)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
                     ->execute($dados);
                 $id = (int) $pdo->lastInsertId();
             }
 
-            $pdo->prepare('DELETE FROM produto_tamanhos WHERE produto_id = ?')->execute([$id]);
-            $ins = $pdo->prepare('INSERT INTO produto_tamanhos (produto_id, tamanho_id) VALUES (?, ?)');
-            foreach ($tamanhosMarcados as $tid) {
-                $ins->execute([$id, $tid]);
+            // Cores: atualiza as mantidas, insere as novas, apaga as removidas
+            $upd = $pdo->prepare('UPDATE produto_cores SET nome = ?, imagem = ?, ordem = ? WHERE id = ? AND produto_id = ?');
+            $insCor = $pdo->prepare('INSERT INTO produto_cores (produto_id, nome, imagem, ordem) VALUES (?, ?, ?, ?)');
+            $idsMantidos = [];
+            $tamanhosPorCorSalva = []; // id da cor => tamanhos
+            foreach ($coresValidas as $ordem => $cor) {
+                $imagemCor = $cor['nova_imagem'] ?? ($cor['remover_foto'] ? null : $cor['imagem']);
+                if ($cor['imagem'] && $imagemCor !== $cor['imagem']) {
+                    $arquivosParaApagar[] = $cor['imagem'];
+                }
+                if ($cor['id']) {
+                    $upd->execute([$cor['nome'], $imagemCor, $ordem, $cor['id'], $id]);
+                    $idsMantidos[] = $cid = $cor['id'];
+                } else {
+                    $insCor->execute([$id, $cor['nome'], $imagemCor, $ordem]);
+                    $cid = (int) $pdo->lastInsertId();
+                }
+                $tamanhosPorCorSalva[$cid] = $cor['tamanhos'];
+            }
+            // Cores removidas: as variações delas somem junto (ON DELETE CASCADE)
+            $delCor = $pdo->prepare('DELETE FROM produto_cores WHERE id = ?');
+            foreach ($coresExistentes as $cid => $c) {
+                if (!in_array($cid, $idsMantidos, true)) {
+                    $delCor->execute([$cid]);
+                    if ($c['imagem']) {
+                        $arquivosParaApagar[] = $c['imagem'];
+                    }
+                }
+            }
+
+            // Variações (cor x tamanho) são regravadas do zero
+            $pdo->prepare('DELETE FROM variacoes WHERE produto_id = ?')->execute([$id]);
+            $insVar = $pdo->prepare('INSERT INTO variacoes (produto_id, cor_id, tamanho_id) VALUES (?, ?, ?)');
+            foreach ($tamanhosPorCorSalva as $cid => $tids) {
+                foreach ($tids as $tid) {
+                    $insVar->execute([$id, $cid, $tid]);
+                }
             }
 
             $pdo->commit();
         } catch (PDOException $ex) {
             $pdo->rollBack();
-            removerImagemProduto($novaImagem);
+            array_map('removerImagemProduto', $arquivosNovos);
             error_log('Erro ao salvar produto: ' . $ex->getMessage());
             $erros[] = 'Erro ao salvar no banco de dados. Tente novamente.';
         }
 
         if (!$erros) {
-            // Foto trocada: apaga a antiga só depois de salvar com sucesso
-            if ($novaImagem && $imagemAntiga) {
-                removerImagemProduto($imagemAntiga);
-            }
+            // Fotos substituídas/removidas só são apagadas depois de salvar com sucesso
+            array_map('removerImagemProduto', $arquivosParaApagar);
             flash('sucesso', 'Produto "' . $produto['nome'] . '" salvo com sucesso.');
             header('Location: index.php');
             exit;
@@ -139,6 +279,55 @@ $precoCampo = is_numeric($produto['preco'])
     ? number_format((float) $produto['preco'], 2, ',', '.')
     : $produto['preco'];
 
+/**
+ * HTML de uma linha de cor com seus tamanhos (também usado como modelo pelo JavaScript).
+ * Todos os tamanhos são impressos; os de outro tipo ficam escondidos (admin.js alterna).
+ */
+function linhaCor(string $chave, array $cor, array $tamanhos, string $tipo): string
+{
+    $src = $cor['imagem'] ? '../' . UPLOAD_URL . e($cor['imagem']) : '';
+    $k = e($chave);
+    ob_start(); ?>
+    <div class="cor-linha" data-chave="<?= $k ?>">
+        <input type="hidden" name="cores[<?= $k ?>][id]" value="<?= $cor['id'] ?: '' ?>">
+        <label class="cor-foto" title="Foto desta cor (opcional)">
+            <img src="<?= $src ?>" alt="" class="<?= $src ? '' : 'd-none' ?>">
+            <i class="bi bi-camera <?= $src ? 'd-none' : '' ?>"></i>
+            <input type="file" name="cor_imagem[<?= $k ?>]" accept="image/jpeg,image/png,image/webp" class="d-none cor-arquivo">
+        </label>
+        <div class="cor-campos">
+            <input type="text" class="form-control form-control-sm" name="cores[<?= $k ?>][nome]"
+                   value="<?= e($cor['nome']) ?>" maxlength="40" placeholder="Nome da cor (ex.: Preto)" aria-label="Nome da cor">
+            <?php if ($cor['imagem']): ?>
+                <div class="form-check mt-1">
+                    <input class="form-check-input" type="checkbox" name="cores[<?= $k ?>][remover_foto]"
+                           id="rem_<?= $k ?>" <?= !empty($cor['remover_foto']) ? 'checked' : '' ?>>
+                    <label class="form-check-label small" for="rem_<?= $k ?>">Usar a foto principal</label>
+                </div>
+            <?php else: ?>
+                <small class="text-muted-admin">Sem foto: usa a foto principal</small>
+            <?php endif; ?>
+
+            <div class="tamanhos-check tamanhos-cor mt-2" role="group" aria-label="Tamanhos desta cor">
+                <?php foreach ($tamanhos as $t):
+                    $mesmoTipo = $t['tipo'] === $tipo;
+                    $marcado = $mesmoTipo && ($tipo === 'unico' || in_array((int) $t['id'], $cor['tamanhos'], true)); ?>
+                    <span class="tamanho-opcao" data-tipo="<?= e($t['tipo']) ?>" <?= $mesmoTipo ? '' : 'hidden' ?>>
+                        <input type="checkbox" class="btn-check" name="cores[<?= $k ?>][tamanhos][]"
+                               id="tam_<?= $k ?>_<?= $t['id'] ?>" value="<?= $t['id'] ?>" <?= $marcado ? 'checked' : '' ?>
+                               <?= $t['tipo'] === 'unico' ? 'onclick="return false"' : '' ?>>
+                        <label class="btn btn-tamanho" for="tam_<?= $k ?>_<?= $t['id'] ?>"><?= e($t['nome']) ?></label>
+                    </span>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger cor-remover" title="Remover cor" aria-label="Remover cor">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+    <?php return ob_get_clean();
+}
+
 $tituloPagina = $id > 0 ? 'Editar produto' : 'Novo produto';
 require __DIR__ . '/includes/topo.php';
 ?>
@@ -150,6 +339,9 @@ require __DIR__ . '/includes/topo.php';
         <ul class="mb-0 ps-3">
             <?php foreach ($erros as $erro): ?><li><?= e($erro) ?></li><?php endforeach; ?>
         </ul>
+        <?php if (!empty($_FILES)): ?>
+            <small class="d-block mt-2">Por segurança o navegador não reenvia fotos: selecione-as novamente.</small>
+        <?php endif; ?>
     </div>
 <?php endif; ?>
 
@@ -159,9 +351,9 @@ require __DIR__ . '/includes/topo.php';
     <input type="hidden" name="MAX_FILE_SIZE" value="<?= UPLOAD_MAX_BYTES ?>">
 
     <div class="row g-4">
-        <!-- Foto -->
+        <!-- Foto principal -->
         <div class="col-12 col-md-4">
-            <label class="form-label">Foto do produto</label>
+            <label class="form-label">Foto principal</label>
             <label for="imagem" class="upload-area" id="uploadArea">
                 <img id="previewImagem"
                      src="<?= $produto['imagem'] ? '../' . UPLOAD_URL . e($produto['imagem']) : '' ?>"
@@ -200,15 +392,30 @@ require __DIR__ . '/includes/topo.php';
                 </div>
             </div>
 
-            <div class="mb-3">
-                <span class="form-label d-block">Tamanhos disponíveis *</span>
-                <div class="tamanhos-check">
-                    <?php foreach ($tamanhos as $t): ?>
-                        <input type="checkbox" class="btn-check" name="tamanhos[]" id="tam<?= $t['id'] ?>" value="<?= $t['id'] ?>"
-                               <?= in_array((int) $t['id'], $tamanhosMarcados, true) ? 'checked' : '' ?>>
-                        <label class="btn btn-tamanho" for="tam<?= $t['id'] ?>"><?= e($t['nome']) ?></label>
+            <!-- Tipo de tamanho + cores, cada cor com seus tamanhos (admin.js) -->
+            <div class="bloco-form mb-3">
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-sm-6">
+                        <label for="tipo_tamanho" class="form-label">Tipo de tamanho *</label>
+                        <select class="form-select" id="tipo_tamanho" name="tipo_tamanho" required>
+                            <?php foreach (TIPOS_TAMANHO as $valor => $rotulo): ?>
+                                <option value="<?= $valor ?>" <?= $produto['tipo_tamanho'] === $valor ? 'selected' : '' ?>><?= e($rotulo) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <span class="form-label d-block">Cores e tamanhos *</span>
+                <p class="form-text mt-0 mb-2">Adicione cada cor e marque os tamanhos que <strong>aquela cor</strong> tem. A foto é opcional: sem ela, o site mostra a foto principal.</p>
+                <div id="listaCores">
+                    <?php foreach ($cores as $chave => $c): ?>
+                        <?= linhaCor($chave, $c, $tamanhos, $produto['tipo_tamanho']) ?>
                     <?php endforeach; ?>
                 </div>
+                <button type="button" class="btn btn-sm btn-outline-ouro mt-2" id="adicionarCor">
+                    <i class="bi bi-plus-lg"></i> Adicionar cor
+                </button>
+                <template id="modeloCor"><?= linhaCor('__CHAVE__', $corVazia, $tamanhos, $produto['tipo_tamanho']) ?></template>
             </div>
 
             <div class="mb-3">
