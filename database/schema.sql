@@ -109,12 +109,13 @@ INSERT INTO usuarios (nome, usuario, senha_hash) VALUES
 ('Administrador', 'admin', '$2y$10$crY0nmFduDaFa5i4FVVIOOwUDlX7zKFCm6l0auKFRQAn6wo9MvYYC');
 
 INSERT INTO categorias (nome, slug, ordem) VALUES
-('Feminino',   'feminino',   1),
-('Masculino',  'masculino',  2),
-('Acessórios', 'acessorios', 3);
+('Feminino',           'feminino',           1),
+('Masculino',          'masculino',          2),
+('Sapatos Masculinos', 'sapatos-masculinos', 3);
 
 INSERT INTO tamanhos (nome, tipo, ordem) VALUES
 ('PP', 'letra', 1), ('P', 'letra', 2), ('M', 'letra', 3), ('G', 'letra', 4), ('GG', 'letra', 5), ('XG', 'letra', 6),
-('34', 'numero', 10), ('36', 'numero', 11), ('38', 'numero', 12), ('40', 'numero', 13),
-('42', 'numero', 14), ('44', 'numero', 15), ('46', 'numero', 16),
+('34', 'numero', 10), ('36', 'numero', 12), ('37', 'numero', 13), ('38', 'numero', 14),
+('39', 'numero', 15), ('40', 'numero', 16), ('41', 'numero', 17), ('42', 'numero', 18),
+('43', 'numero', 19), ('44', 'numero', 20), ('46', 'numero', 22),
 ('Único', 'unico', 30);

@@ -363,6 +363,49 @@ a:hover { color: var(--ouro-claro); }
 }
 .whatsapp-flutuante:hover { color: var(--preto); transform: scale(1.07); }
 
+/* ---------- Modal: escolha do atendente do WhatsApp ---------- */
+.whats-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: flex-end; /* celular: sobe de baixo, perto do polegar */
+    justify-content: center;
+}
+.whats-modal[hidden] { display: none; }
+.whats-modal-fundo { position: absolute; inset: 0; background: rgba(0, 0, 0, .7); animation: whats-fade .2s ease; }
+.whats-modal-caixa {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    padding: 1.6rem 1.25rem calc(1.4rem + env(safe-area-inset-bottom));
+    background: var(--preto-2);
+    border: 1px solid var(--borda);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+    animation: whats-sobe .25s ease;
+}
+.whats-modal-caixa h2 { font-size: 1.25rem; text-align: center; margin: 0 2rem .5rem; }
+.whats-modal-opcao { margin-top: 0; padding-top: .85rem; padding-bottom: .85rem; font-size: .95rem; }
+.whats-modal-fechar {
+    position: absolute;
+    top: .5rem;
+    right: .5rem;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    background: none;
+    color: var(--cinza);
+    font-size: 1.1rem;
+}
+.whats-modal-fechar:hover { color: var(--branco); }
+body.modal-aberto { overflow: hidden; }
+@keyframes whats-fade { from { opacity: 0; } }
+@keyframes whats-sobe { from { transform: translateY(100%); } }
+
 /* ================================================================
    Telas maiores
    ================================================================ */
@@ -379,6 +422,8 @@ a:hover { color: var(--ouro-claro); }
     .produto-nome { font-size: 1.1rem; }
     .produto-card:hover { transform: translateY(-3px); }
     .site-footer { padding-bottom: 3rem; }
+    .whats-modal { align-items: center; }
+    .whats-modal-caixa { border-bottom: 1px solid var(--borda); border-radius: 16px; padding-bottom: 1.6rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

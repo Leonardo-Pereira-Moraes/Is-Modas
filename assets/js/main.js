@@ -94,6 +94,47 @@ document.querySelectorAll('.produto-card').forEach((card) => {
 });
 
 /* ------------------------------------------------------------------
+   Escolha do atendente: qualquer link do WhatsApp abre o modal, e cada
+   opção leva a mesma mensagem para o número escolhido
+   ------------------------------------------------------------------ */
+const whatsModal = document.getElementById('whatsModal');
+
+if (whatsModal) {
+    const opcoes = whatsModal.querySelectorAll('.whats-modal-opcao');
+    let origem = null; // botão que abriu o modal, para devolver o foco
+
+    function abrirWhatsModal(link) {
+        const texto = new URL(link.href).searchParams.get('text') || '';
+        opcoes.forEach((o) => {
+            o.href = `https://wa.me/${o.dataset.numero}?text=${encodeURIComponent(texto)}`;
+        });
+        origem = link;
+        whatsModal.hidden = false;
+        document.body.classList.add('modal-aberto');
+        opcoes[0]?.focus();
+    }
+
+    function fecharWhatsModal() {
+        if (whatsModal.hidden) return;
+        whatsModal.hidden = true;
+        document.body.classList.remove('modal-aberto');
+        origem?.focus();
+    }
+
+    document.addEventListener('click', (ev) => {
+        const link = ev.target.closest('a[href^="https://wa.me/"]');
+        if (!link || whatsModal.contains(link)) return;
+        ev.preventDefault();
+        abrirWhatsModal(link);
+    });
+
+    // O link da opção abre o WhatsApp normalmente; o modal só fecha junto
+    opcoes.forEach((o) => o.addEventListener('click', fecharWhatsModal));
+    whatsModal.querySelectorAll('[data-fechar]').forEach((el) => el.addEventListener('click', fecharWhatsModal));
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') fecharWhatsModal(); });
+}
+
+/* ------------------------------------------------------------------
    Filtro por categoria (somente na página do catálogo)
    ------------------------------------------------------------------ */
 const grade = document.getElementById('gradeProdutos');

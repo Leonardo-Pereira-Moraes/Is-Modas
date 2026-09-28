@@ -10,7 +10,7 @@ $paginaAtiva = $paginaAtiva ?? '';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= isset($tituloPagina) ? e($tituloPagina) . ' · ' : '' ?><?= e(LOJA_NOME) ?></title>
-    <meta name="description" content="<?= e($descricaoPagina ?? LOJA_NOME . ' — moda feminina, masculina e acessórios. Escolha suas peças e compre pelo WhatsApp.') ?>">
+    <meta name="description" content="<?= e($descricaoPagina ?? LOJA_NOME . ' — moda feminina, masculina e sapatos masculinos. Escolha suas peças e compre pelo WhatsApp.') ?>">
     <meta name="theme-color" content="#0D0D0D">
     <link rel="icon" type="image/png" href="assets/img/favicon.png">
     <link rel="apple-touch-icon" href="assets/img/favicon.png">

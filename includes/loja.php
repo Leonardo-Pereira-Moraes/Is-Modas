@@ -86,5 +86,6 @@ function linkWhatsApp(?array $produto = null, ?string $tamanho = null, ?string $
     } else {
         $msg = "Olá, " . LOJA_NOME . "! Vim pelo site e gostaria de mais informações.";
     }
-    return 'https://wa.me/' . WHATSAPP_NUMERO . '?text=' . rawurlencode($msg);
+    // O main.js intercepta o clique e deixa o cliente escolher o número (WHATSAPP_CONTATOS)
+    return 'https://wa.me/' . reset(WHATSAPP_CONTATOS) . '?text=' . rawurlencode($msg);
 }
